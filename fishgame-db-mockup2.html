@@ -114,7 +114,21 @@
   }
   .tag-chip:hover { color:var(--text); border-color:rgba(0,200,255,0.3); }
   .tag-chip.selected { background:rgba(0,200,255,0.1); border-color:var(--accent); color:var(--accent); }
-  .boss-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:16px; }
+  .boss-grid { display:flex; flex-direction:column; gap:32px; }
+  .boss-group-header {
+    display:flex; align-items:center; gap:12px;
+    margin-bottom:14px; padding-bottom:10px;
+    border-bottom:1px solid var(--border);
+  }
+  .group-num {
+    font-family:'Orbitron',monospace; font-size:11px;
+    color:var(--accent); background:rgba(0,200,255,0.1);
+    border:1px solid rgba(0,200,255,0.25); border-radius:4px;
+    padding:2px 8px; letter-spacing:1px;
+  }
+  .group-name { font-size:15px; font-weight:700; color:var(--text-bright); }
+  .group-count { font-size:12px; color:var(--text-dim); margin-left:auto; }
+  .boss-group-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
   .boss-card {
     background:var(--surface); border:1px solid var(--border);
     border-radius:12px; overflow:hidden; transition:all 0.25s; cursor:pointer;
@@ -409,31 +423,85 @@ function buildBossFilters() {
   });
 }
 
+function parseMultiplier(raw) {
+  if (!raw) return 0;
+  return parseFloat(String(raw).replace(/[^0-9.]/g, '')) || 0;
+}
+
 function renderBoss(data) {
-  bossRenderCache = data;
   const grid = document.getElementById('boss-grid');
-  if (!data.length) { grid.innerHTML = `<div style="color:var(--text-dim);padding:40px;grid-column:1/-1">找不到符合條件的 Boss</div>`; return; }
-  grid.innerHTML = data.map((b, i) => {
-    const tags   = parseTags(b['玩法標籤']);
-    const videos = parseVideos(b);
-    const maxR   = b['最大倍率'] ? `${b['最大倍率']}` : '';
-    return `
-      <div class="boss-card" onclick="openModal(${i})">
-        <div class="boss-card-header">
-          <div>
-            <div class="boss-name">${b['Boss名稱'] ?? ''}</div>
-            <div class="boss-game">${b['所屬魚機'] ?? ''}</div>
+  if (!data.length) {
+    grid.innerHTML = `<div style="color:var(--text-dim);padding:40px;grid-column:1/-1">找不到符合條件的 Boss</div>`;
+    bossRenderCache = [];
+    return;
+  }
+
+  // 依魚機資料庫編號建立排序對照表
+  const gameOrder = {};
+  GAMES_DATA.forEach((g, i) => { gameOrder[g['遊戲名稱']] = i; });
+
+  // 依魚機分組
+  const groups = {};
+  data.forEach(b => {
+    const game = b['所屬魚機'] || '未分類';
+    if (!groups[game]) groups[game] = [];
+    groups[game].push(b);
+  });
+
+  // 組內按倍率高低排序
+  Object.keys(groups).forEach(game => {
+    groups[game].sort((a, b) => parseMultiplier(b['最大倍率']) - parseMultiplier(a['最大倍率']));
+  });
+
+  // 依魚機編號排序各組
+  const sortedGames = Object.keys(groups).sort((a, b) => {
+    const ia = gameOrder[a] ?? 999;
+    const ib = gameOrder[b] ?? 999;
+    return ia - ib;
+  });
+
+  // 建立扁平化 cache 供 modal 使用
+  bossRenderCache = [];
+  sortedGames.forEach(game => groups[game].forEach(b => bossRenderCache.push(b)));
+
+  // 渲染
+  grid.innerHTML = sortedGames.map(game => {
+    const bosses = groups[game];
+    const gameIdx = GAMES_DATA.findIndex(g => g['遊戲名稱'] === game);
+    const gameNum = gameIdx >= 0 ? `#${GAMES_DATA[gameIdx]['編號'] ?? gameIdx + 1}` : '';
+    const cards = bosses.map((b) => {
+      const idx    = bossRenderCache.indexOf(b);
+      const tags   = parseTags(b['玩法標籤']);
+      const videos = parseVideos(b);
+      const maxR   = b['最大倍率'] ? `${b['最大倍率']}` : '';
+      return `
+        <div class="boss-card" onclick="openModal(${idx})">
+          <div class="boss-card-header">
+            <div>
+              <div class="boss-name">${b['Boss名稱'] ?? ''}</div>
+              <div class="boss-game">${b['所屬魚機'] ?? ''}</div>
+            </div>
+            ${maxR ? `<div class="boss-maxr">${maxR}</div>` : ''}
           </div>
-          ${maxR ? `<div class="boss-maxr">${maxR}</div>` : ''}
+          <div class="boss-tags">
+            ${tags.map(t => `<span class="boss-tag ${tagColor(t)}">${t}</span>`).join('') || '<span style="color:var(--text-dim);font-size:12px">尚無標籤</span>'}
+          </div>
+          ${videos.length ? `
+          <div class="boss-videos">
+            ${videos.slice(0,3).map(v => `<a class="video-pill" href="${v.u}" target="_blank" onclick="event.stopPropagation()">▶ ${v.d}</a>`).join('')}
+            ${videos.length > 3 ? `<span style="font-size:12px;color:var(--text-dim);align-self:center">+${videos.length - 3}</span>` : ''}
+          </div>` : ''}
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="boss-group">
+        <div class="boss-group-header">
+          <span class="group-num">${gameNum}</span>
+          <span class="group-name">${game}</span>
+          <span class="group-count">${bosses.length} 隻</span>
         </div>
-        <div class="boss-tags">
-          ${tags.map(t => `<span class="boss-tag ${tagColor(t)}">${t}</span>`).join('') || '<span style="color:var(--text-dim);font-size:12px">尚無標籤</span>'}
-        </div>
-        ${videos.length ? `
-        <div class="boss-videos">
-          ${videos.slice(0,3).map(v => `<a class="video-pill" href="${v.u}" target="_blank" onclick="event.stopPropagation()">▶ ${v.d}</a>`).join('')}
-          ${videos.length > 3 ? `<span style="font-size:12px;color:var(--text-dim);align-self:center">+${videos.length - 3}</span>` : ''}
-        </div>` : ''}
+        <div class="boss-group-grid">${cards}</div>
       </div>`;
   }).join('');
 }
