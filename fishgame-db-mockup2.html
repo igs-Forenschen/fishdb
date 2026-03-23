@@ -378,10 +378,14 @@ function parseTags(raw) {
   if (!raw) return [];
   return String(raw).split(/[,，\s]+/).map(t => t.trim()).filter(Boolean);
 }
-function parseVideos(raw) {
-  if (!raw) return [];
-  // 支援多個連結用逗號或換行分隔
-  return String(raw).split(/[,\n]+/).map(u => u.trim()).filter(u => u.startsWith('http')).map(u => ({ u }));
+function parseVideos(b) {
+  const videos = [];
+  for (let i = 1; i <= 5; i++) {
+    const url  = (b[`影片${i}連結`] ?? '').trim();
+    const desc = (b[`影片${i}說明`] ?? '').trim();
+    if (url) videos.push({ u: url, d: desc || `影片 ${i}` });
+  }
+  return videos;
 }
 
 function buildBossFilters() {
@@ -411,7 +415,7 @@ function renderBoss(data) {
   if (!data.length) { grid.innerHTML = `<div style="color:var(--text-dim);padding:40px;grid-column:1/-1">找不到符合條件的 Boss</div>`; return; }
   grid.innerHTML = data.map((b, i) => {
     const tags   = parseTags(b['玩法標籤']);
-    const videos = parseVideos(b['影片連結']);
+    const videos = parseVideos(b);
     const maxR   = b['最大倍率'] ? `${b['最大倍率']}` : '';
     return `
       <div class="boss-card" onclick="openModal(${i})">
@@ -427,7 +431,8 @@ function renderBoss(data) {
         </div>
         ${videos.length ? `
         <div class="boss-videos">
-          ${videos.map((v,vi) => `<a class="video-pill" href="${v.u}" target="_blank" onclick="event.stopPropagation()">▶ 影片 ${videos.length>1?vi+1:''}</a>`).join('')}
+          ${videos.slice(0,3).map(v => `<a class="video-pill" href="${v.u}" target="_blank" onclick="event.stopPropagation()">▶ ${v.d}</a>`).join('')}
+          ${videos.length > 3 ? `<span style="font-size:12px;color:var(--text-dim);align-self:center">+${videos.length - 3}</span>` : ''}
         </div>` : ''}
       </div>`;
   }).join('');
@@ -470,7 +475,7 @@ function renderTagDefs() {
 function openModal(idx) {
   const b      = bossRenderCache[idx];
   const tags   = parseTags(b['玩法標籤']);
-  const videos = parseVideos(b['影片連結']);
+  const videos = parseVideos(b);
   const maxR   = b['最大倍率'] ? `最大倍率 ${b['最大倍率']}` : '';
 
   document.getElementById('modal-name').textContent = b['Boss名稱'] ?? '';
@@ -484,9 +489,9 @@ function openModal(idx) {
   if (videos.length) {
     document.getElementById('modal-videos').innerHTML = videos.map((v, i) => `
       <a class="video-item" href="${v.u}" target="_blank">
-        <div class="video-num">${i+1}</div>
-        <div class="video-desc">影片 ${i+1}</div>
-        <div class="video-play">▶ 播放</div>
+        <div class="video-num">${i + 1}</div>
+        <div class="video-desc">${v.d}</div>
+        <div class="video-play">▶ 開啟</div>
       </a>`).join('');
     vSection.style.display = '';
   } else {
